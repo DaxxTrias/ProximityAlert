@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using ExileCore.RenderQ;
-using ExileCore.Shared.Nodes;
+using ExileCore2.RenderQ;
+using ExileCore2.Shared.Nodes;
 using ImGuiNET;
 
 namespace ProximityAlert

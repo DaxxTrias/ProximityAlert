@@ -4,13 +4,21 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using ExileCore;
-using ExileCore.PoEMemory.Components;
-using ExileCore.PoEMemory.MemoryObjects;
-using ExileCore.Shared.Enums;
-using ExileCore.Shared.Helpers;
-using SharpDX;
+using ExileCore2;
+using ExileCore2.PoEMemory.Components;
+using ExileCore2.PoEMemory.MemoryObjects;
+using ExileCore2.Shared.Enums;
+using ExileCore2.Shared.Helpers;
+using ExileCore2.Shared.Interfaces;
+using ExileCore2.Shared.Cache;
+using ExileCore2.Shared.Nodes;
+using ExileCore2.Shared;
+using System.Numerics;
+using System.Drawing;
+using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
+using Vector3 = System.Numerics.Vector3;
+
 // ReSharper disable CollectionNeverUpdated.Local
 
 namespace ProximityAlert
@@ -36,6 +44,7 @@ namespace ProximityAlert
             _ingameState = GameController.Game.IngameState;
             lock (Locker) _soundController = GameController.SoundController;
             _windowArea = GameController.Window.GetWindowRectangle();
+            
             Graphics.InitImage(Path.Combine(DirectoryFullName, "textures\\Direction-Arrow.png").Replace('\\', '/'),
                 false);
             Graphics.InitImage(Path.Combine(DirectoryFullName, "textures\\back.png").Replace('\\', '/'), false);
@@ -76,8 +85,14 @@ namespace ProximityAlert
 
         private static Color HexToColor(string value)
         {
-            uint.TryParse(value, NumberStyles.HexNumber, null, out var abgr);
-            return Color.FromAbgr(abgr);
+            if (value.StartsWith("#")) value = value.Substring(1);
+            if (value.Length == 6) value = "ff" + value; // Add full opacity if not specified
+            return Color.FromArgb(
+                int.Parse(value.Substring(0, 2), NumberStyles.HexNumber), // alpha
+                int.Parse(value.Substring(2, 2), NumberStyles.HexNumber), // red
+                int.Parse(value.Substring(4, 2), NumberStyles.HexNumber), // green
+                int.Parse(value.Substring(6, 2), NumberStyles.HexNumber)  // blue
+            );
         }
 
         private Dictionary<string, Warning> LoadConfig(string path)
@@ -113,12 +128,9 @@ namespace ProximityAlert
         }
 
 
-        public override Job Tick()
+        public override void Tick()
         {
-            if (Settings.MultiThreading)
-                return GameController.MultiThreadManager.AddJob(TickLogic, nameof(Proximity));
             TickLogic();
-            return null;
         }
 
         private void TickLogic()
@@ -173,7 +185,10 @@ namespace ProximityAlert
             // Sanity Check because I'm too lazy to make a queue
             if ((DateTime.Now - _lastPlayed).TotalMilliseconds > 250)
             {
-                if (path != string.Empty) _soundController.PlaySound(Path.Combine(_soundDir, path).Replace('\\', '/'));
+                if (path != string.Empty) {
+                    _soundController.PreloadSound(Path.Combine(_soundDir, path).Replace('\\', '/'));
+                    _soundController.PlaySound(Path.Combine(_soundDir, path).Replace('\\', '/'));
+                }
                 _lastPlayed = DateTime.Now;
             }
         }
@@ -193,12 +208,14 @@ namespace ProximityAlert
                     {
                         var entityScreenPos = _ingameState.Camera.WorldToScreen(sEnt.Pos.Translate(0, 0, 0));
                         var textWidth = Graphics.MeasureText(sEnt.Path, 10) * 0.73f;
-                        Graphics.DrawBox(
-                            new RectangleF(entityScreenPos.X - textWidth.X / 2, entityScreenPos.Y - 7, textWidth.X, 13),
-                            new Color(0, 0, 0, 200));
-                        Graphics.DrawText(sEnt.Path, new Vector2(entityScreenPos.X, entityScreenPos.Y), Color.White, 10,
-                            Settings.Font.Value, FontAlign.Center | FontAlign.VerticalCenter);
-                        // Graphics.DrawText(sEnt.Path, new System.Numerics.Vector2(entityScreenPos.X, entityScreenPos.Y), Color.White, 10, "FrizQuadrataITC:13", FontAlign.Center | FontAlign.VerticalCenter);
+                        var position = new Vector2(entityScreenPos.X - textWidth.X / 2, entityScreenPos.Y - 7);
+                        Graphics.DrawBox(position, position+new Vector2(textWidth.X, 13), Color.FromArgb(200, 0, 0, 0));
+                        Graphics.DrawText(
+                            sEnt.Path,
+                            new Vector2(entityScreenPos.X, entityScreenPos.Y),
+                            Color.White,
+                            FontAlign.Center
+                        );
                     }
 
                 if (Settings.ShowSirusLine)
@@ -210,9 +227,9 @@ namespace ProximityAlert
                         var entityScreenPos = _ingameState.Camera.WorldToScreen(sEnt.Pos.Translate(0, 0, 0));
                         var playerPosition =
                             GameController.Game.IngameState.Camera.WorldToScreen(GameController.Player.Pos);
-                        Graphics.DrawLine(playerPosition, entityScreenPos, 4, new Color(255, 0, 255, 140));
+                        Graphics.DrawLine(playerPosition, entityScreenPos, 4, Color.FromArgb(140, 255, 0, 255));
 
-                        Graphics.DrawText(sEnt.DistancePlayer.ToString(CultureInfo.InvariantCulture), new SharpDX.Vector2(0, 0));
+                        Graphics.DrawText(sEnt.DistancePlayer.ToString(CultureInfo.InvariantCulture), new Vector2(0, 0));
                     }
 
                 var unopened = "";
@@ -239,10 +256,11 @@ namespace ProximityAlert
                     {
                         mods += structValue.Name;
                         lines++;
+                        var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
+                        var textSize = Graphics.MeasureText(structValue.Name);
+                        Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(structValue.Name,
-                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color, 10,
-                            Settings.Font.Value);
-                        // Graphics.DrawText(structValue.Name, new System.Numerics.Vector2(origin.X + 4, origin.Y - (lines * 15)), structValue.Color, 10, "FrizQuadrataITC:15", FontAlign.Left);
+                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color);
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
                     }
                 }
@@ -278,10 +296,11 @@ namespace ProximityAlert
                     {
                         mods += structValue.Name;
                         lines++;
+                        var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
+                        var textSize = Graphics.MeasureText(structValue.Name);
+                        Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(structValue.Name,
-                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color, 10,
-                            Settings.Font.Value);
-                        // Graphics.DrawText(structValue.Name, new System.Numerics.Vector2(origin.X + 4, origin.Y - (lines * 15)), structValue.Color, 10, "FrizQuadrataITC:15", FontAlign.Left);
+                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color);
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
                         match = true;
                     }
@@ -327,10 +346,10 @@ namespace ProximityAlert
                                     if (chestName.Contains("Path ") || !chestName.Contains("Currency"))
                                         continue;
                             if (chestName.Contains("Currency") || chestName.Contains("Fossil"))
-                                lineColor = new Color(255, 0, 255);
-                            if (chestName.Contains("Flares")) lineColor = new Color(0, 200, 255);
+                                lineColor = Color.FromArgb(255, 255, 0, 255);
+                            if (chestName.Contains("Flares")) lineColor = Color.FromArgb(255, 0, 200, 255);
                             if (chestName.Contains("Dynamite") || chestName.Contains("Explosives"))
-                                lineColor = new Color(255, 50, 50);
+                                lineColor = Color.FromArgb(255, 255, 50, 50);
                             lineText = chestName;
                             lines++;
                             match = true;
@@ -338,9 +357,11 @@ namespace ProximityAlert
 
                     if (match)
                     {
+                        var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
+                        var textSize = Graphics.MeasureText(lineText);
+                        Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(lineText, new Vector2(origin.X + height / 2, origin.Y - lines * height),
-                            lineColor, 10, Settings.Font.Value);
-                        // Graphics.DrawText(lineText, new System.Numerics.Vector2(origin.X + 4, origin.Y - (lines * 15)), lineColor, 10, "FrizQuadrataITC:15", FontAlign.Left);
+                            lineColor);
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, lineColor);
                     }
                 }
@@ -351,12 +372,12 @@ namespace ProximityAlert
 
                     var box = new RectangleF(origin.X - 2, origin.Y - margin - lines * height,
                         (192 + 4) * widthMultiplier, margin + lines * height + 4);
-                    Graphics.DrawImage("back.png", box, Color.White);
-                    Graphics.DrawLine(new SharpDX.Vector2(origin.X - 15, origin.Y - margin - lines * height),
-                        new SharpDX.Vector2(origin.X + (192 + 4) * widthMultiplier,
+                    // Graphics.DrawImage("back.png", box, Color.White);
+                    Graphics.DrawLine(new Vector2(origin.X - 15, origin.Y - margin - lines * height),
+                        new Vector2(origin.X + (192 + 4) * widthMultiplier,
                             origin.Y - margin - lines * height), 1, Color.White);
-                    Graphics.DrawLine(new SharpDX.Vector2(origin.X - 15, origin.Y + 3),
-                        new SharpDX.Vector2(origin.X + (192 + 4) * widthMultiplier, origin.Y + 3), 1, Color.White);
+                    Graphics.DrawLine(new Vector2(origin.X - 15, origin.Y + 3),
+                        new Vector2(origin.X + (192 + 4) * widthMultiplier, origin.Y + 3), 1, Color.White);
                 }
             }
             catch
