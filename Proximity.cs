@@ -148,19 +148,15 @@ namespace ProximityAlert
                         var mods = entity.GetComponent<ObjectMagicProperties>().Mods;
                         if (mods != null)
                         {
-                            var modMatch = mods.FirstOrDefault(x => _modDict.ContainsKey(x));
-                            var filter = _modDict[modMatch ?? string.Empty];
-                            if (filter != null)
+                            var matchingMods = mods.Where(x => _modDict.ContainsKey(x)).ToList();
+                            if (matchingMods.Any())
                             {
-                                entity.SetHudComponent(new ProximityAlert(entity, filter.Color));
+                                var filters = matchingMods.Select(mod => _modDict[mod]).ToList();
+                                entity.SetHudComponent(new ProximityAlert(entity, filters));
                                 lock (Locker)
                                 {
-                                    PlaySound(filter.SoundFile);
+                                    PlaySound(filters[0].SoundFile);
                                 }
-                            }
-                            else
-                            {
-                                return;
                             }
                         }
                     }
@@ -244,7 +240,7 @@ namespace ProximityAlert
                     // skip white mobs
                     if (entity.Rarity == MonsterRarity.White) continue;
                     var structValue = entity.GetHudComponent<ProximityAlert>();
-                    if (structValue == null || !entity.IsAlive || structValue.Name == string.Empty) continue;
+                    if (structValue == null || !entity.IsAlive || structValue.Names == string.Empty) continue;
                     var delta = entity.GridPos - GameController.Player.GridPos;
                     var distance = delta.GetPolarCoordinates(out var phi);
 
@@ -252,16 +248,41 @@ namespace ProximityAlert
                         origin.Y - margin / 2 - height - lines * height, height, height);
                     var rectUV = Get64DirectionsUV(phi, distance, 3);
 
-                    if (!mods.Contains(structValue.Name))
+                    if (!mods.Contains(structValue.Names))
                     {
-                        mods += structValue.Name;
-                        lines++;
-                        var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
-                        var textSize = Graphics.MeasureText(structValue.Name);
-                        Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
-                        Graphics.DrawText(structValue.Name,
-                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color);
+                        var modLines = structValue.Names.Split('\n');
+                        var lineCount = modLines.Length;
+                        
+                        // Calculate total height needed for all lines
+                        var totalHeight = lineCount * height;
+                        
+                        // Draw each line of text with its own background
+                        for (var i = 0; i < lineCount; i++)
+                        {
+                            var currentLine = modLines[i];
+                            var position = new Vector2(origin.X + height / 2, origin.Y - (lines + i + 1) * height);
+                            var textSize = Graphics.MeasureText(currentLine);
+                            
+                            // Draw background box for this line
+                            Graphics.DrawBox(
+                                position, 
+                                position + new Vector2(textSize.X, height), 
+                                Color.FromArgb(200, 0, 0, 0)
+                            );
+                            
+                            // Draw the text
+                            Graphics.DrawText(
+                                currentLine,
+                                position,
+                                structValue.Color
+                            );
+                        }
+
+                        // Draw direction arrow for the entire mod group
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
+                        
+                        mods += structValue.Names;
+                        lines += lineCount;
                     }
                 }
 
@@ -292,14 +313,14 @@ namespace ProximityAlert
                     if (ePath.Contains("@")) ePath = ePath.Split('@')[0];
                     // Hud component check
                     var structValue = entity.GetHudComponent<ProximityAlert>();
-                    if (structValue != null && !mods.Contains(structValue.Name))
+                    if (structValue != null && !mods.Contains(structValue.Names))
                     {
-                        mods += structValue.Name;
+                        mods += structValue.Names;
                         lines++;
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
-                        var textSize = Graphics.MeasureText(structValue.Name);
+                        var textSize = Graphics.MeasureText(structValue.Names);
                         Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
-                        Graphics.DrawText(structValue.Name,
+                        Graphics.DrawText(structValue.Names,
                             new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color);
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
                         match = true;
@@ -369,15 +390,38 @@ namespace ProximityAlert
                 if (lines > 0)
                 {
                     var widthMultiplier = 1 + height / 100;
+                    var maxWidth = 192 * widthMultiplier;
 
-                    var box = new RectangleF(origin.X - 2, origin.Y - margin - lines * height,
-                        (192 + 4) * widthMultiplier, margin + lines * height + 4);
-                    // Graphics.DrawImage("back.png", box, Color.White);
-                    Graphics.DrawLine(new Vector2(origin.X - 15, origin.Y - margin - lines * height),
-                        new Vector2(origin.X + (192 + 4) * widthMultiplier,
-                            origin.Y - margin - lines * height), 1, Color.White);
-                    Graphics.DrawLine(new Vector2(origin.X - 15, origin.Y + 3),
-                        new Vector2(origin.X + (192 + 4) * widthMultiplier, origin.Y + 3), 1, Color.White);
+                    // Find the maximum text width to determine box width
+                    var allLines = mods.Split('\n');
+                    foreach (var line in allLines)
+                    {
+                        var lineWidth = Graphics.MeasureText(line).X;
+                        maxWidth = Math.Max(maxWidth, lineWidth + height + 4); // height + 4 for padding
+                    }
+
+                    var box = new RectangleF(
+                        origin.X - 2,
+                        origin.Y - margin - lines * height,
+                        maxWidth + 4,
+                        margin + lines * height + 4
+                    );
+
+                    // Draw top border line
+                    Graphics.DrawLine(
+                        new Vector2(origin.X - 15, origin.Y - margin - lines * height),
+                        new Vector2(origin.X + maxWidth, origin.Y - margin - lines * height),
+                        1,
+                        Color.White
+                    );
+
+                    // Draw bottom border line
+                    Graphics.DrawLine(
+                        new Vector2(origin.X - 15, origin.Y + 3),
+                        new Vector2(origin.X + maxWidth, origin.Y + 3),
+                        1,
+                        Color.White
+                    );
                 }
             }
             catch
@@ -427,17 +471,19 @@ namespace ProximityAlert
 
         private class ProximityAlert
         {
-            public ProximityAlert(Entity entity, Color color)
+            public ProximityAlert(Entity entity, List<Warning> warnings)
             {
                 Entity = entity;
-                Color = color;
-                Name = string.Empty;
+                Warnings = warnings;
+                Names = string.Empty;
+                Color = warnings[0].Color;
                 PlayWarning = true;
             }
 
             private Entity Entity { get; }
-            public string Name { get; private set; }
-            public Color Color { get; private set; }
+            private List<Warning> Warnings { get; set; }
+            public string Names { get; private set; }
+            public Color Color { get; }
             private bool PlayWarning { get; set; }
 
             public void Update()
@@ -446,18 +492,21 @@ namespace ProximityAlert
                 if (!Entity.HasComponent<ObjectMagicProperties>() || !Entity.IsAlive) return;
                 var mods = Entity.GetComponent<ObjectMagicProperties>()?.Mods;
                 if (mods == null || mods.Count <= 0) return;
-                var modMatch = mods.FirstOrDefault(x => _modDict.ContainsKey(x));
-                var filter = _modDict[modMatch ?? string.Empty];
-                if (filter == null) return;
-                Name = filter.Text;
-                Color = filter.Color;
+
+                var matchingMods = mods.Where(x => _modDict.ContainsKey(x)).ToList();
+                if (!matchingMods.Any()) return;
+
+                Warnings = matchingMods.Select(mod => _modDict[mod]).ToList();
+                Names = string.Join("\n", Warnings.Select(w => w.Text));
+
                 if (PlayWarning)
+                {
                     lock (Locker)
                     {
-                        PlaySound(filter.SoundFile);
+                        PlaySound(Warnings[0].SoundFile);
                     }
-
-                PlayWarning = false;
+                    PlayWarning = false;
+                }
             }
         }
 
