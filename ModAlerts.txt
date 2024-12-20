@@ -1,0 +1,18 @@
+#Mod Contains;Name in tooltip;RGBA colour code;distance to render -1 for always;soundfile
+# Most dangerous mods
+MonsterBloodlinesBeaconOnDeathFire;Flame Bearers;FF0000FF;-1;
+MonsterBloodlinesBeaconOnDeathCold;Frost Bearers;FF0000FF;-1;
+MonsterBloodlinesBeaconOnDeathLightning;Storm Bearers;FF0000FF;-1;
+MonsterExplodesOnDeathFire1;Volatile Flameblood;FF0000FF;-1;volatile
+MonsterExplodesOnDeathLightning1;Volatile Stormblood;FF0000FF;-1;volatile
+MonsterExplodesOnDeathCold1;Volatile Iceblood;FF0000FF;-1;volatile
+MonsterNemesisCorruptedBlood;Corrupting Blood;FF0000FF;-1;corrupting
+MonsterBloodlinesVoidspawn;Voidspawn of Abaxoth;FF0000FF;-1;
+MonsterNemesisRemoveFlaskAndChargeBuffsOnHit;Nullifier;FF0000FF;-1;
+Modifier:MonsterNemesisProximityShield;Proximity shield;FF0000FF;-1;
+# Reflect
+MonsterThornsPhysical1;Physical Reflect;FF0000FF;-1;physical
+MonsterThornsPhysical1Large;Physical Reflect;FF0000FF;-1;physical
+MonsterThornsElemental1;Elemental Reflect;FF0000FF;-1;elemental
+MonsterThornsElemental1Large;Elemental Reflect;FF0000FF;-1;elemental
+MonsterLightningMirage1;Lightning Mirage;FF0000FF;-1;lightning.wav

@@ -1,0 +1,71 @@
+#Mod Contains;Name in tooltip;RGBA colour code;distance to render, -1 for always, -2 for while valid;Sound
+# Harbinger
+Metadata/Monsters/Avatar/Avatar;Harbinger;00FF00FF;-2;harbinger
+Metadata/Monsters/HarbingerPortal;Harbinger;00FF00FF;-2;harbinger
+Metadata/Monsters/Totems/HarbingerTotem;Harbinger;00FF00FF;-2;harbinger
+# Volatile Core
+Metadata/Monsters/VolatileCore/VolatileCore;Volatile Core;FF0000FF;-2;core
+# Delirium
+Metadata/MiscellaneousObjects/Affliction/AfflictionInitiator;Delirium Mirror;00FF00FF;-1;delirium
+# Harvest
+Metadata/Terrain/Leagues/Harvest/Objects/HarvestPortal;Harvest;00FF00FF;-1;seed
+Metadata/Terrain/Leagues/Harvest/harvest_encounter.arm;Harvest;00FFFFFF;-1;seed
+# Strongbox
+Metadata/Chests/StrongBoxes/StrongboxDivination;Diviner's Strongbox;00FF00FF;-1;diviners
+# Beyond Bosses
+Metadata/Monsters/BeyondDemons/BeyondDemon3-1;Tzteosh, Hungering Flame;FF0000FF;-2;beyond
+Metadata/Monsters/BeyondDemons/BeyondDemon3-2;Ephij, Crackling Sky;FF0000FF;-2;beyond
+Metadata/Monsters/BeyondDemons/BeyondDemon3-3;Haast, Unrelenting Frost;FF0000FF;-2;beyond
+Metadata/Monsters/BeyondDemons/BeyondDemon3-4;Bameth, Shifting Darkness;FF0000FF;-2;beyond
+Metadata/Monsters/BeyondDemons/BeyondDemon3-5;Na'em, Bending Stone;FF0000FF;-2;beyond
+Metadata/Monsters/BeyondDemons/BeyondDemon3-6;Abaxoth, The End of All That Is;FF0000FF;-2;beyond
+# Albino Rhoas
+Metadata/Monsters/Rhoas/RhoaAlbino;Albino Rhoa;FF00FFFF;-1;albino
+# Fossils
+Metadata/Chests/DelveChests/EnchantedFossilChestDynamite;Enchanted Fossil;FFFF00FF;-1;enchanted
+Metadata/Chests/DelveChests/PerfectFossilChestDynamite;Perfect Fossil;FFFF00FF;-1;perfect
+Metadata/Chests/DelveChests/BoundFossilChestDynamite;Bound Fossil;FFFFABFF;-1;bound
+Metadata/Chests/DelveChests/AethericFossilChestDynamite;Aetheric Fossil;FFFFABFF;-1;aetheric
+Metadata/Chests/DelveChests/PrismaticFossilChestDynamite;Prismatic Fossil;FFFFABFF;-1;prismatic
+Metadata/Chests/DelveChests/SerratedFossilChestDynamite;Serrated Fossil;FFFFABFF;-1;serrated
+Metadata/Chests/DelveChests/FracturedFossilChest;Fractured Fossil;FF00FFFF;-1;fractured
+Metadata/Chests/DelveChests/FacetedFossilChest;Faceted Fossil;6400FFFF;-1;faceted
+Metadata/Chests/DelveChests/HollowFossilChest;Hollow Fossil;6400FFFF;-1;hollow
+Metadata/Chests/DelveChests/GlyphicFossilChest;Glyphic Fossil;FFFF00FF;-1;glyphic
+Metadata/Chests/DelveChests/CorrodedFossilChest;Corroded Fossil;FFFF00FF;-1;corroded
+Metadata/Chests/DelveChests/CorrodedFossilChestDynamite;Corroded Fossil;FFFF00FF;-1;corroded
+Metadata/Chests/DelveChests/BloodstainedFossilChest;Bloodstained Fossil;FFFF00FF;-1;bloodstained
+Metadata/Chests/DelveChests/EnchantedFossilChest;Enchanted Fossil;FFFF00FF;-1;enchanted
+Metadata/Chests/DelveChests/PerfectFossilChest;Perfect Fossil;FFFF00FF;-1;perfect
+Metadata/Chests/DelveChests/SanctifiedFossilChest;Sanctified Fossil;FFFF00FF;-1;sanctified
+Metadata/Chests/DelveChests/ShudderingFossilChest;Shuddering Fossil;FFFF00FF;-1;shuddering
+Metadata/Chests/DelveChests/BoundFossilChest;Bound Fossil;FFFFABFF;-1;bound
+Metadata/Chests/DelveChests/GildedFossilChest;Gilded Fossil;FFFFABFF;-1;gilded
+Metadata/Chests/DelveChests/TangledFossilChest;Tangled Fossil;FFFFABFF;-1;tangled
+Metadata/Chests/DelveChests/DenseFossilChest;Dense Fossil;FFFFABFF;-1;dense
+Metadata/Chests/DelveChests/AethericFossilChest;Aetheric Fossil;FFFFABFF;-1;aetheric
+Metadata/Chests/DelveChests/JaggedFossilChest;Jagged Fossil;FFFFABFF;-1;jagged
+Metadata/Chests/DelveChests/PrismaticFossilChest;Prismatic Fossil;FFFFABFF;-1;prismatic
+Metadata/Chests/DelveChests/PristineFossilChest;Pristine Fossil;FFFFABFF;-1;pristine
+Metadata/Chests/DelveChests/SerratedFossilChest;Serrated Fossil;FFFFABFF;-1;serrated
+Metadata/Chests/DelveChests/EncrustedFossilChest;Encrusted Fossil;FFFFABFF;-1;encrusted
+Metadata/Chests/DelveChests/LucentFossilChest;Lucent Fossil;FFFFABFF;-1;lucent
+Metadata/Chests/DelveChests/AberrantFossilChest;Aberrant Fossil;FFFFFFFF;-1;aberrant
+Metadata/Chests/DelveChests/FrigidFossilChest;Frigid Fossil;FFFFFFFF;-1;frigid
+Metadata/Chests/DelveChests/MetallicFossilChest;Metallic Fossil;FFFFFFFF;-1;metallic
+Metadata/Chests/DelveChests/ScorchedFossilChest;Scorched Fossil;FFFFFFFF;-1;scorched
+Metadata/Chests/DelveChests/DelveChestAssortedFossils;Assorted Fossils;FFFF00FF;-1;fossil
+Metadata/Chests/DelveChests/DelveChestCityProtoVaalFossils;Vaal Fossils;FFFF00FF;-1;fossil
+# Currency
+Metadata/Chests/DelveChests/DelveChestCurrency1;Currency 1;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrency2;Currency 2;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrency3;Currency 3;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencyDivination;Currency Divination;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencyHighShards;Currency HighShards;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencyMaps;Currency Maps;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencyMaps2;Currency Maps 2;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencySilverCoins;Currency SilverCoins;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencySockets;Currency Sockets;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencySockets2;Currency Sockets 2;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencyVaal;Currency Vaal;6400FFFF;-1;currency
+Metadata/Chests/DelveChests/DelveChestCurrencyWisdomScrolls;Currency Wisdom;6400FFFF;-1;currency
