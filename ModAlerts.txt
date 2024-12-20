@@ -15,4 +15,6 @@ MonsterThornsPhysical1;Physical Reflect;FF0000FF;-1;physical
 MonsterThornsPhysical1Large;Physical Reflect;FF0000FF;-1;physical
 MonsterThornsElemental1;Elemental Reflect;FF0000FF;-1;elemental
 MonsterThornsElemental1Large;Elemental Reflect;FF0000FF;-1;elemental
-MonsterLightningMirage1;Lightning Mirage;FF0000FF;-1;lightning.wav
+
+# Custom
+MonsterVolatilePlants1;Volatile Plants;FF0000FF;-1;volatile.wav
