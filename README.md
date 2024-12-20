@@ -2,8 +2,6 @@
 
 # <p style="color:red;">WARNING: This plugin is not fully tested and some features may not be compatible with POE2.</p>   
 
-Download <https://github.com/vadash/ProximityAlert/archive/master.zip>. Remove `-master` from name. Move to `PoEHelper\Plugins\Source\PLUGIN_NAME`. Extract assets.zip. Dont compile.
-
 ![image](https://user-images.githubusercontent.com/1397582/113477411-3295ae00-948a-11eb-8d9a-6a13b950cc66.png)
 
 # Includes
