@@ -13,7 +13,6 @@ namespace ProximityAlert
         public ToggleNode MultiThreading { get; set; } = new ToggleNode(true);
         public ToggleNode ShowModAlerts { get; set; } = new ToggleNode(false);
         public ToggleNode ShowPathAlerts { get; set; } = new ToggleNode(true);
-        public ToggleNode ShowSirusLine { get; set; } = new ToggleNode(true);
         public ToggleNode PlaySounds { get; set; } = new ToggleNode(true);
         public ToggleNode Enable { get; set; } = new ToggleNode(true);
     }

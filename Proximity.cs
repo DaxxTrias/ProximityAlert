@@ -214,20 +214,6 @@ namespace ProximityAlert
                         );
                     }
 
-                if (Settings.ShowSirusLine)
-                    foreach (var sEnt in GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster]
-                        .Where(x => x.Metadata.Equals("Metadata/Monsters/AtlasExiles/AtlasExile5")))
-                    {
-                        if (sEnt.Path.Contains("Throne") || sEnt.Path.Contains("Apparation")) break;
-                        if (sEnt.DistancePlayer > 200) break;
-                        var entityScreenPos = _ingameState.Camera.WorldToScreen(sEnt.Pos.Translate(0, 0, 0));
-                        var playerPosition =
-                            GameController.Game.IngameState.Camera.WorldToScreen(GameController.Player.Pos);
-                        Graphics.DrawLine(playerPosition, entityScreenPos, 4, Color.FromArgb(140, 255, 0, 255));
-
-                        Graphics.DrawText(sEnt.DistancePlayer.ToString(CultureInfo.InvariantCulture), new Vector2(0, 0));
-                    }
-
                 var unopened = "";
                 var mods = "";
                 var lines = 0;

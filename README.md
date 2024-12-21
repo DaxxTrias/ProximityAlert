@@ -9,7 +9,5 @@
 
 **Path Warnings:** chests, strongboxes, sulphite, special mobs, etc.
 
-**Basic Sirus Helper:** it draws a big ass line to him in case you too are bad at video games.
-
 # Preview
 ![Image](https://i.imgur.com/xvtLSk9.png)

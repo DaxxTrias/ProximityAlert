@@ -17,4 +17,10 @@ MonsterThornsElemental1;Elemental Reflect;FF0000FF;-1;elemental
 MonsterThornsElemental1Large;Elemental Reflect;FF0000FF;-1;elemental
 
 # Custom
-MonsterVolatilePlants1;Volatile Plants;FF0000FF;-1;volatile.wav
+MonsterVolatilePlants1;Volatile Plants;ffa4ffa4;-1;volatileplants.wav
+MonsterVolatileRocks1;Volatile Rocks;ffa4ffa4;-1;volatilerocks.wav
+MonsterFlameBeacons1;Flame Beacons;ffa4ffa4;-1;flamebeacons.wav
+MonsterCorpseExploder1;Corpse Exploder;ffa4ffa4;-1;corpseexploder.wav
+MonsterLightningStorms1;Lightning Storms;ffa4ffa4;-1;lightningstorms.wav
+MonsterChilledGroundOnDeath1;Chilled Ground;ffa4ffa4;-1;chilledground.wav
+MonsterBurningGroundOnDeath1;Burning Ground;ffa4ffa4;-1;burningground.wav

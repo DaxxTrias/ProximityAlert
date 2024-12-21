@@ -127,8 +127,6 @@ namespace ProximityAlert
                 _pathDict = LoadConfig(Path.Combine(DirectoryFullName, "PathAlerts.txt"));
                 _modDict = LoadConfig(Path.Combine(DirectoryFullName, "ModAlerts.txt"));
             }
-
-            Settings.ShowSirusLine.Value = Checkbox("Draw a Line to Real Sirus", Settings.ShowSirusLine);
         }
     }
 }
