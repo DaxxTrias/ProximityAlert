@@ -27,3 +27,4 @@ MonsterBurningGroundOnDeath1;Burning Ground;ffa4ffa4;-1;burningground.wav
 MonsterFrostBeacons1;Frost Beacons;ffa4ffa4;-1;frostbeacons.wav
 MonsterMagmaBarrier1;Magma Barrier;ffa4ffa4;-1;magmabarrier.wav
 MonsterShockedGroundOnDeath1;Shocked Ground;ffa4ffa4;-1;shockedground.wav
+MonsterLightningBeacons1;Lightning Beacons;ffa4ffa4;-1;lightningbeacons.wav
