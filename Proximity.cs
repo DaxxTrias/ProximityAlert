@@ -9,11 +9,6 @@ using ExileCore2.PoEMemory.Components;
 using ExileCore2.PoEMemory.MemoryObjects;
 using ExileCore2.Shared.Enums;
 using ExileCore2.Shared.Helpers;
-using ExileCore2.Shared.Interfaces;
-using ExileCore2.Shared.Cache;
-using ExileCore2.Shared.Nodes;
-using ExileCore2.Shared;
-using System.Numerics;
 using System.Drawing;
 using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
@@ -135,7 +130,7 @@ namespace ProximityAlert
 
         private void TickLogic()
         {
-            while (_entityAddedQueue.Count > 0)
+            while (_entityAddedQueue.Count > 0 && (!GameController.Area.CurrentArea.IsHideout || !GameController.Area.CurrentArea.IsTown))
             {
                 var entity = _entityAddedQueue.Dequeue();
                 if (entity.IsValid && !entity.IsAlive) continue;
