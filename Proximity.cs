@@ -188,6 +188,9 @@ namespace ProximityAlert
         {
             try
             {
+                if (GameController.Area.CurrentArea.IsTown || GameController.Area.CurrentArea.IsHideout) 
+                    return;
+
                 _playSounds = Settings.PlaySounds;
                 var height = (float) int.Parse(Settings.Font.Value.Substring(Settings.Font.Value.Length - 2));
                 height = height * Settings.Scale;
