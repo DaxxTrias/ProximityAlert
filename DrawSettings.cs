@@ -111,7 +111,7 @@ namespace ProximityAlert
             ImGui.SameLine(); HelpMarker("Relative to the center of the screen.");
             ImGui.SameLine();
             HelpMarker("Relative to the center of the screen.");
-            Settings.MultiThreading.Value = Checkbox("Enable Multithreading", Settings.MultiThreading);
+            //Settings.MultiThreading.Value = Checkbox("Enable Multithreading", Settings.MultiThreading);
             Settings.ShowModAlerts.Value = Checkbox("Show Alerts for Modifiers", Settings.ShowModAlerts);
             ImGui.SameLine();
             HelpMarker("By default this covers things such as corrupting blood.");

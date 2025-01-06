@@ -10,7 +10,7 @@ namespace ProximityAlert
         public RangeNode<float> Scale { get; set; } = new RangeNode<float>(1, (float) 0.1, 10);
         public RangeNode<int> ProximityX { get; set; } = new RangeNode<int>(0, -3840, 2560);
         public RangeNode<int> ProximityY { get; set; } = new RangeNode<int>(0, -3840, 2560);
-        public ToggleNode MultiThreading { get; set; } = new ToggleNode(true);
+        //public ToggleNode MultiThreading { get; set; } = new ToggleNode(true);
         public ToggleNode ShowModAlerts { get; set; } = new ToggleNode(false);
         public ToggleNode ShowPathAlerts { get; set; } = new ToggleNode(true);
         public ToggleNode PlaySounds { get; set; } = new ToggleNode(true);
