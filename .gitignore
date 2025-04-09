@@ -343,3 +343,4 @@ healthchecksdb
 # KDiff3
 *.orig
 ProximityAlert.sln
+.github
