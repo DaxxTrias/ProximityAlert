@@ -27,10 +27,14 @@ namespace ProximityAlert
         private static bool _playSounds = true;
         private static DateTime _lastPlayed;
         private static readonly object Locker = new object();
-        private static readonly List<StaticEntity> NearbyPaths = new List<StaticEntity>();
-        private readonly Queue<Entity> _entityAddedQueue = new Queue<Entity>();
+        private static readonly HashSet<StaticEntity> NearbyPaths = new HashSet<StaticEntity>();
+        private readonly List<Entity> _entityAddedList = new List<Entity>();
         private IngameState _ingameState;
         private RectangleF _windowArea;
+        private List<Entity> _cachedMonsters;
+        private Vector2 _cachedVector2 = new Vector2();
+        private RectangleF _cachedRectangleF = new RectangleF();
+        private Dictionary<string, Vector2> _cachedTextSizes = new Dictionary<string, Vector2>();
 
         public override bool Initialise()
         {
@@ -39,7 +43,7 @@ namespace ProximityAlert
             _ingameState = GameController.Game.IngameState;
             lock (Locker) _soundController = GameController.SoundController;
             _windowArea = GameController.Window.GetWindowRectangle();
-            
+
             Graphics.InitImage(Path.Combine(DirectoryFullName, "textures\\Direction-Arrow.png").Replace('\\', '/'),
                 false);
             Graphics.InitImage(Path.Combine(DirectoryFullName, "textures\\back.png").Replace('\\', '/'), false);
@@ -55,7 +59,7 @@ namespace ProximityAlert
             phi += Math.PI * 0.25; // fix rotation due to projection
             if (phi > 2 * Math.PI) phi -= 2 * Math.PI;
 
-            var xSprite = (float) Math.Round(phi / Math.PI * 32);
+            var xSprite = (float)Math.Round(phi / Math.PI * 32);
             if (xSprite >= 64) xSprite = 0;
 
             float ySprite = distance > 60 ? distance > 120 ? 2 : 1 : 0;
@@ -75,7 +79,7 @@ namespace ProximityAlert
             return File.ReadAllLines(path).Where(line => !string.IsNullOrWhiteSpace(line)
                                                          && line.IndexOf(';') >= 0
                                                          && !line.StartsWith("#")).Select(line =>
-                line.Split(new[] {';'}, 5).Select(parts => parts.Trim()).ToArray());
+                line.Split(new[] { ';' }, 5).Select(parts => parts.Trim()).ToArray());
         }
 
         private static Color HexToColor(string value)
@@ -98,7 +102,7 @@ namespace ProximityAlert
                 var distance = -1;
                 if (int.TryParse(line[3], out var tmp)) distance = tmp;
                 var preloadAlertConfigLine = new Warning
-                    {Text = line[1], Color = HexToColor(line[2]), Distance = distance, SoundFile = line[4]};
+                { Text = line[1], Color = HexToColor(line[2]), Distance = distance, SoundFile = line[4] };
                 return preloadAlertConfigLine;
             });
         }
@@ -106,14 +110,14 @@ namespace ProximityAlert
         public override void EntityAdded(Entity entity)
         {
             if (!Settings.Enable.Value) return;
-            if (entity.Type == EntityType.Monster) _entityAddedQueue.Enqueue(entity);
+            if (entity.Type == EntityType.Monster) _entityAddedList.Add(entity);
         }
 
         public override void AreaChange(AreaInstance area)
         {
             try
             {
-                _entityAddedQueue.Clear();
+                _entityAddedList.Clear();
                 NearbyPaths.Clear();
             }
             catch
@@ -130,9 +134,12 @@ namespace ProximityAlert
 
         private void TickLogic()
         {
-            while (_entityAddedQueue.Count > 0 && (!GameController.Area.CurrentArea.IsHideout || !GameController.Area.CurrentArea.IsTown))
+            _cachedMonsters = GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster].ToList();
+
+            while (_entityAddedList.Count > 0 && (!GameController.Area.CurrentArea.IsHideout || !GameController.Area.CurrentArea.IsTown))
             {
-                var entity = _entityAddedQueue.Dequeue();
+                var entity = _entityAddedList[0];
+                _entityAddedList.RemoveAt(0);
                 if (entity.IsValid && !entity.IsAlive) continue;
                 if (!entity.IsHostile || !entity.IsValid) continue;
                 if (!Settings.ShowModAlerts) continue;
@@ -163,7 +170,7 @@ namespace ProximityAlert
             }
 
             // Update valid
-            foreach (var entity in GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster])
+            foreach (var entity in _cachedMonsters)
             {
                 var drawCmd = entity.GetHudComponent<ProximityAlert>();
                 drawCmd?.Update();
@@ -176,7 +183,8 @@ namespace ProximityAlert
             // Sanity Check because I'm too lazy to make a queue
             if ((DateTime.Now - _lastPlayed).TotalMilliseconds > 250)
             {
-                if (path != string.Empty) {
+                if (path != string.Empty)
+                {
                     _soundController.PreloadSound(Path.Combine(_soundDir, path).Replace('\\', '/'));
                     _soundController.PlaySound(Path.Combine(_soundDir, path).Replace('\\', '/'));
                 }
@@ -188,11 +196,11 @@ namespace ProximityAlert
         {
             try
             {
-                if (GameController.Area.CurrentArea.IsTown || GameController.Area.CurrentArea.IsHideout) 
+                if (GameController.Area.CurrentArea.IsTown || GameController.Area.CurrentArea.IsHideout)
                     return;
 
                 _playSounds = Settings.PlaySounds;
-                var height = (float) int.Parse(Settings.Font.Value.Substring(Settings.Font.Value.Length - 2));
+                var height = (float)int.Parse(Settings.Font.Value.Substring(Settings.Font.Value.Length - 2));
                 height = height * Settings.Scale;
                 var margin = height / Settings.Scale / 4;
 
@@ -201,9 +209,9 @@ namespace ProximityAlert
                     foreach (var sEnt in NearbyPaths)
                     {
                         var entityScreenPos = _ingameState.Camera.WorldToScreen(sEnt.Pos.Translate(0, 0, 0));
-                        var textWidth = Graphics.MeasureText(sEnt.Path, 10) * 0.73f;
+                        var textWidth = GetCachedTextSize(sEnt.Path, 10) * 0.73f;
                         var position = new Vector2(entityScreenPos.X - textWidth.X / 2, entityScreenPos.Y - 7);
-                        Graphics.DrawBox(position, position+new Vector2(textWidth.X, 13), Color.FromArgb(200, 0, 0, 0));
+                        Graphics.DrawBox(position, position + new Vector2(textWidth.X, 13), Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(
                             sEnt.Path,
                             new Vector2(entityScreenPos.X, entityScreenPos.Y),
@@ -219,7 +227,7 @@ namespace ProximityAlert
                 var origin = _windowArea.Center.Translate(Settings.ProximityX - 96, Settings.ProximityY);
 
                 // mod Alerts
-                foreach (var entity in GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster])
+                foreach (var entity in _cachedMonsters)
                 {
                     // skip white mobs
                     if (entity.Rarity == MonsterRarity.White) continue;
@@ -236,24 +244,24 @@ namespace ProximityAlert
                     {
                         var modLines = structValue.Names.Split('\n');
                         var lineCount = modLines.Length;
-                        
+
                         // Calculate total height needed for all lines
                         var totalHeight = lineCount * height;
-                        
+
                         // Draw each line of text with its own background
                         for (var i = 0; i < lineCount; i++)
                         {
                             var currentLine = modLines[i];
                             var position = new Vector2(origin.X + height / 2, origin.Y - (lines + i + 1) * height);
-                            var textSize = Graphics.MeasureText(currentLine);
-                            
+                            var textSize = GetCachedTextSize(currentLine);
+
                             // Draw background box for this line
                             Graphics.DrawBox(
-                                position, 
-                                position + new Vector2(textSize.X, height), 
+                                position,
+                                position + new Vector2(textSize.X, height),
                                 Color.FromArgb(200, 0, 0, 0)
                             );
-                            
+
                             // Draw the text
                             Graphics.DrawText(
                                 currentLine,
@@ -264,7 +272,7 @@ namespace ProximityAlert
 
                         // Draw direction arrow for the entire mod group
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
-                        
+
                         mods += structValue.Names;
                         lines += lineCount;
                     }
@@ -302,8 +310,8 @@ namespace ProximityAlert
                         mods += structValue.Names;
                         lines++;
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
-                        var textSize = Graphics.MeasureText(structValue.Names);
-                        Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
+                        var textSize = GetCachedTextSize(structValue.Names);
+                        Graphics.DrawBox(position, position + textSize, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(structValue.Names,
                             new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color);
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
@@ -363,8 +371,8 @@ namespace ProximityAlert
                     if (match)
                     {
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
-                        var textSize = Graphics.MeasureText(lineText);
-                        Graphics.DrawBox(position, position+textSize, Color.FromArgb(200, 0, 0, 0));
+                        var textSize = GetCachedTextSize(lineText);
+                        Graphics.DrawBox(position, position + textSize, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(lineText, new Vector2(origin.X + height / 2, origin.Y - lines * height),
                             lineColor);
                         Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, lineColor);
@@ -380,7 +388,7 @@ namespace ProximityAlert
                     var allLines = mods.Split('\n');
                     foreach (var line in allLines)
                     {
-                        var lineWidth = Graphics.MeasureText(line).X;
+                        var lineWidth = GetCachedTextSize(line).X;
                         maxWidth = Math.Max(maxWidth, lineWidth + height + 4); // height + 4 for padding
                     }
 
@@ -414,6 +422,16 @@ namespace ProximityAlert
             }
         }
 
+        private Vector2 GetCachedTextSize(string text, int fontSize = 0)
+        {
+            var key = $"{text}_{fontSize}";
+            if (!_cachedTextSizes.TryGetValue(key, out var size))
+            {
+                size = Graphics.MeasureText(text, fontSize);
+                _cachedTextSizes[key] = size;
+            }
+            return size;
+        }
 
         private class Warning
         {
