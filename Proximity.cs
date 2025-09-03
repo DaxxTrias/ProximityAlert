@@ -48,8 +48,10 @@ namespace ProximityAlert
                 false);
             Graphics.InitImage(Path.Combine(DirectoryFullName, "textures\\back.png").Replace('\\', '/'), false);
             lock (Locker) _soundDir = Path.Combine(DirectoryFullName, "sounds\\").Replace('\\', '/');
-            _pathDict = LoadConfig(Path.Combine(DirectoryFullName, "PathAlerts.txt"));
-            _modDict = LoadConfig(Path.Combine(DirectoryFullName, "ModAlerts.txt"));
+            var pathAlertsPath = EnsureConfigFile("PathAlerts.txt");
+            var modAlertsPath = EnsureConfigFile("ModAlerts.txt");
+            _pathDict = LoadConfig(pathAlertsPath);
+            _modDict = LoadConfig(modAlertsPath);
             SetFonts();
             return true;
         }
@@ -94,17 +96,84 @@ namespace ProximityAlert
             );
         }
 
+        private static bool TryHexToColor(string value, out Color color)
+        {
+            color = Color.White;
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            var v = value.StartsWith("#", StringComparison.Ordinal) ? value[1..] : value;
+            if (v.Length == 6) v = "ff" + v;
+            if (v.Length != 8) return false;
+
+            if (!int.TryParse(v.Substring(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var a)) return false;
+            if (!int.TryParse(v.Substring(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var r)) return false;
+            if (!int.TryParse(v.Substring(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var g)) return false;
+            if (!int.TryParse(v.Substring(6, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var b)) return false;
+
+            color = Color.FromArgb(a, r, g, b);
+            return true;
+        }
+
+        private string EnsureConfigFile(string fileName)
+        {
+            try
+            {
+                var globalDir = ConfigDirectory;
+                Directory.CreateDirectory(globalDir);
+                var globalPath = Path.Combine(globalDir, fileName);
+                var legacyPath = Path.Combine(DirectoryFullName, fileName);
+
+                if (File.Exists(globalPath)) return globalPath;
+
+                if (File.Exists(legacyPath))
+                {
+                    try { File.Copy(legacyPath, globalPath, false); } catch { /* ignore */ }
+                    return globalPath;
+                }
+
+                // Create default with a helpful header
+                File.WriteAllLines(globalPath, new[]
+                {
+                    "# ProximityAlert config",
+                    "# Format: <PathContains> ; <Display Text> ; <AARRGGBB or RRGGBB> ; <Distance or -1> ; <SoundFileName>"
+                });
+                return globalPath;
+            }
+            catch
+            {
+                // Fallback to legacy location if something goes wrong
+                return Path.Combine(DirectoryFullName, fileName);
+            }
+        }
+
         private Dictionary<string, Warning> LoadConfig(string path)
         {
-            //if (!File.Exists(path)) CreateConfig(path);
-            return GenDictionary(path).ToDictionary(line => line[0], line =>
+            var dict = new Dictionary<string, Warning>(StringComparer.OrdinalIgnoreCase);
+            try
             {
-                var distance = -1;
-                if (int.TryParse(line[3], out var tmp)) distance = tmp;
-                var preloadAlertConfigLine = new Warning
-                { Text = line[1], Color = HexToColor(line[2]), Distance = distance, SoundFile = line[4] };
-                return preloadAlertConfigLine;
-            });
+                if (!File.Exists(path)) return dict;
+                foreach (var line in GenDictionary(path))
+                {
+                    if (line.Length < 5) continue;
+                    var key = line[0];
+                    var text = line[1];
+                    var colorStr = line[2];
+                    var distanceStr = line[3];
+                    var sound = line[4];
+
+                    if (!int.TryParse(distanceStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var distance))
+                        distance = -1;
+
+                    if (!TryHexToColor(colorStr, out var color))
+                        color = Color.White;
+
+                    dict[key] = new Warning { Text = text, Color = color, Distance = distance, SoundFile = sound };
+                }
+            }
+            catch
+            {
+                // ignored - return what we have
+            }
+            return dict;
         }
 
         public override void EntityAdded(Entity entity)
@@ -119,6 +188,7 @@ namespace ProximityAlert
             {
                 _entityAddedList.Clear();
                 NearbyPaths.Clear();
+                _cachedTextSizes.Clear();
             }
             catch
             {
@@ -136,7 +206,7 @@ namespace ProximityAlert
         {
             _cachedMonsters = GameController.EntityListWrapper.ValidEntitiesByType[EntityType.Monster].ToList();
 
-            while (_entityAddedList.Count > 0 && (!GameController.Area.CurrentArea.IsHideout || !GameController.Area.CurrentArea.IsTown))
+            while (_entityAddedList.Count > 0 && !(GameController.Area.CurrentArea.IsHideout || GameController.Area.CurrentArea.IsTown))
             {
                 var entity = _entityAddedList[0];
                 _entityAddedList.RemoveAt(0);
@@ -179,16 +249,19 @@ namespace ProximityAlert
 
         private static void PlaySound(string path)
         {
-            if (!_playSounds) return;
-            // Sanity Check because I'm too lazy to make a queue
-            if ((DateTime.Now - _lastPlayed).TotalMilliseconds > 250)
+            lock (Locker)
             {
-                if (path != string.Empty)
-                {
-                    _soundController.PreloadSound(Path.Combine(_soundDir, path).Replace('\\', '/'));
-                    _soundController.PlaySound(Path.Combine(_soundDir, path).Replace('\\', '/'));
-                }
-                _lastPlayed = DateTime.Now;
+                if (!_playSounds) return;
+                if (string.IsNullOrWhiteSpace(path)) return;
+                if (_soundController == null || string.IsNullOrEmpty(_soundDir)) return;
+
+                var now = DateTime.UtcNow;
+                if ((now - _lastPlayed).TotalMilliseconds <= 250) return;
+
+                var full = Path.Combine(_soundDir, path).Replace('\\', '/');
+                _soundController.PreloadSound(full);
+                _soundController.PlaySound(full);
+                _lastPlayed = now;
             }
         }
 
@@ -200,9 +273,13 @@ namespace ProximityAlert
                     return;
 
                 _playSounds = Settings.PlaySounds;
-                var height = (float)int.Parse(Settings.Font.Value.Substring(Settings.Font.Value.Length - 2));
-                height = height * Settings.Scale;
-                var margin = height / Settings.Scale / 4;
+                var scale = Math.Max(0.01f, Settings.Scale);
+                var fontStr = Settings.Font?.Value ?? "12";
+                var digits = new string(fontStr.Where(char.IsDigit).ToArray());
+                if (!float.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fontSize))
+                    fontSize = 12f;
+                var height = fontSize * scale;
+                var margin = height / scale / 4f;
 
                 if (!Settings.Enable) return;
                 if (Settings.ShowPathAlerts)
@@ -227,54 +304,58 @@ namespace ProximityAlert
                 var origin = _windowArea.Center.Translate(Settings.ProximityX - 96, Settings.ProximityY);
 
                 // mod Alerts
-                foreach (var entity in _cachedMonsters)
+                var monsters = _cachedMonsters;
+                if (monsters != null)
                 {
-                    // skip white mobs
-                    if (entity.Rarity == MonsterRarity.White) continue;
-                    var structValue = entity.GetHudComponent<ProximityAlert>();
-                    if (structValue == null || !entity.IsAlive || structValue.Names == string.Empty) continue;
-                    var delta = entity.GridPos - GameController.Player.GridPos;
-                    var distance = delta.GetPolarCoordinates(out var phi);
-
-                    var rectDirection = new RectangleF(origin.X - margin - height / 2,
-                        origin.Y - margin / 2 - height - lines * height, height, height);
-                    var rectUV = Get64DirectionsUV(phi, distance, 3);
-
-                    if (!mods.Contains(structValue.Names))
+                    foreach (var entity in monsters)
                     {
-                        var modLines = structValue.Names.Split('\n');
-                        var lineCount = modLines.Length;
+                        // skip white mobs
+                        if (entity.Rarity == MonsterRarity.White) continue;
+                        var structValue = entity.GetHudComponent<ProximityAlert>();
+                        if (structValue == null || !entity.IsAlive || structValue.Names == string.Empty) continue;
+                        var delta = entity.GridPos - GameController.Player.GridPos;
+                        var distance = delta.GetPolarCoordinates(out var phi);
 
-                        // Calculate total height needed for all lines
-                        var totalHeight = lineCount * height;
+                        var rectDirection = new RectangleF(origin.X - margin - height / 2,
+                            origin.Y - margin / 2 - height - lines * height, height, height);
+                        var rectUV = Get64DirectionsUV(phi, distance, 3);
 
-                        // Draw each line of text with its own background
-                        for (var i = 0; i < lineCount; i++)
+                        if (!mods.Contains(structValue.Names))
                         {
-                            var currentLine = modLines[i];
-                            var position = new Vector2(origin.X + height / 2, origin.Y - (lines + i + 1) * height);
-                            var textSize = GetCachedTextSize(currentLine);
+                            var modLines = structValue.Names.Split('\n');
+                            var lineCount = modLines.Length;
 
-                            // Draw background box for this line
-                            Graphics.DrawBox(
-                                position,
-                                position + new Vector2(textSize.X, height),
-                                Color.FromArgb(200, 0, 0, 0)
-                            );
+                            // Calculate total height needed for all lines
+                            var totalHeight = lineCount * height;
 
-                            // Draw the text
-                            Graphics.DrawText(
-                                currentLine,
-                                position,
-                                structValue.Color
-                            );
+                            // Draw each line of text with its own background
+                            for (var i = 0; i < lineCount; i++)
+                            {
+                                var currentLine = modLines[i];
+                                var position = new Vector2(origin.X + height / 2, origin.Y - (lines + i + 1) * height);
+                                var textSize = GetCachedTextSize(currentLine);
+
+                                // Draw background box for this line
+                                Graphics.DrawBox(
+                                    position,
+                                    position + new Vector2(textSize.X, height),
+                                    Color.FromArgb(200, 0, 0, 0)
+                                );
+
+                                // Draw the text
+                                Graphics.DrawText(
+                                    currentLine,
+                                    position,
+                                    structValue.Color
+                                );
+                            }
+
+                            // Draw direction arrow for the entire mod group
+                            Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
+
+                            mods += structValue.Names;
+                            lines += lineCount;
                         }
-
-                        // Draw direction arrow for the entire mod group
-                        Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
-
-                        mods += structValue.Names;
-                        lines += lineCount;
                     }
                 }
 
@@ -292,15 +373,16 @@ namespace ProximityAlert
                     if (entity.HasComponent<Monster>() && (!entity.IsAlive || !entity.IsValid)) continue;
                     if (entity.GetHudComponent<SoundStatus>() != null && !entity.IsValid)
                         entity.GetHudComponent<SoundStatus>().Invalid();
+                    var miniIcon = entity.GetComponent<MinimapIcon>();
                     if (entity.Type == EntityType.IngameIcon &&
-                        (!entity.IsValid || (entity?.GetComponent<MinimapIcon>().IsHide ?? true))) continue;
+                        (!entity.IsValid || (miniIcon?.IsHide ?? true))) continue;
                     var delta = entity.GridPos - GameController.Player.GridPos;
                     var distance = delta.GetPolarCoordinates(out var phi);
 
                     var rectDirection = new RectangleF(origin.X - margin - height / 2,
                         origin.Y - margin / 2 - height - lines * height, height, height);
                     var rectUV = Get64DirectionsUV(phi, distance, 3);
-                    var ePath = entity.Path;
+                    var ePath = entity.Path ?? string.Empty;
                     // prune paths where relevant
                     if (ePath.Contains("@")) ePath = ePath.Split('@')[0];
                     // Hud component check
@@ -385,7 +467,7 @@ namespace ProximityAlert
                     var maxWidth = 192 * widthMultiplier;
 
                     // Find the maximum text width to determine box width
-                    var allLines = mods.Split('\n');
+                    var allLines = string.IsNullOrEmpty(mods) ? Array.Empty<string>() : mods.Split('\n');
                     foreach (var line in allLines)
                     {
                         var lineWidth = GetCachedTextSize(line).X;
