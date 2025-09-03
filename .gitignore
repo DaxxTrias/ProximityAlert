@@ -344,3 +344,4 @@ healthchecksdb
 *.orig
 ProximityAlert.sln
 .github
+.cursorrules
