@@ -36,7 +36,7 @@ namespace ProximityAlert
         private readonly Dictionary<string, Vector2> _cachedTextSizes = new Dictionary<string, Vector2>();
         private readonly object _textSizeCacheLock = new object();
         private readonly Queue<string> _textSizeKeys = new Queue<string>();
-        private const int TextSizeCacheCapacity = 256;
+        private const int TextSizeCacheCapacity = 96;
         private bool _hasArrowImage;
         private bool _hasBackImage;
 
