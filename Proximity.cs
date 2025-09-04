@@ -409,6 +409,10 @@ namespace ProximityAlert
 
                 var origin = _windowArea.Center.Translate(Settings.ProximityX.Value - 96, Settings.ProximityY.Value);
 
+                // Defer drawing of text/arrows so borders are drawn first
+                var textBoxes = new List<(Vector2 Pos, Vector2 Size, string Text, Color Color)>(64);
+                var arrowDraws = new List<(RectangleF Rect, RectangleF UV, Color Color)>(32);
+
                 // mod Alerts
                 var monsters = System.Threading.Volatile.Read(ref _cachedMonsters);
                 if (monsters != null)
@@ -437,21 +441,11 @@ namespace ProximityAlert
                                 var textSize = GetCachedTextSize(currentLine);
                                 if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
 
-                                Graphics.DrawBox(
-                                    position,
-                                    position + new Vector2(textSize.X, height),
-                                    Color.FromArgb(200, 0, 0, 0)
-                                );
-
-                                Graphics.DrawText(
-                                    currentLine,
-                                    position,
-                                    structValue.Color
-                                );
+                                textBoxes.Add((position, new Vector2(textSize.X, height), currentLine, structValue.Color));
                             }
 
                             if (_hasArrowImage)
-                                Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
+                                arrowDraws.Add((rectDirection, rectUV, structValue.Color));
 
                             lines += lineCount;
                         }
@@ -480,11 +474,11 @@ namespace ProximityAlert
                     }
 
                     var delta = entity.GridPos - GameController.Player.GridPos;
-                    var distance = delta.GetPolarCoordinates(out var phi);
+                    var distance = delta.GetPolarCoordinates(out var phi2);
 
-                    var rectDirection = new RectangleF(origin.X - margin - height / 2,
+                    var rectDirection2 = new RectangleF(origin.X - margin - height / 2,
                         origin.Y - margin / 2 - height - lines * height, height, height);
-                    var rectUV = Get64DirectionsUV(phi, distance, 3);
+                    var rectUV2 = Get64DirectionsUV(phi2, distance, 3);
                     var ePath = entity.Path ?? string.Empty;
                     if (ePath.Contains("@")) ePath = ePath.Split('@')[0];
                     var structValue2 = entity.GetHudComponent<ProximityAlert>();
@@ -494,11 +488,9 @@ namespace ProximityAlert
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
                         var textSize = GetCachedTextSize(structValue2.Names);
                         if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
-                        Graphics.DrawBox(position, position + textSize, Color.FromArgb(200, 0, 0, 0));
-                        Graphics.DrawText(structValue2.Names,
-                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue2.Color);
+                        textBoxes.Add((position, textSize, structValue2.Names, structValue2.Color));
                         if (_hasArrowImage)
-                            Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue2.Color);
+                            arrowDraws.Add((rectDirection2, rectUV2, structValue2.Color));
                         match = true;
                     }
 
@@ -556,11 +548,9 @@ namespace ProximityAlert
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
                         var textSize = GetCachedTextSize(lineText);
                         if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
-                        Graphics.DrawBox(position, position + textSize, Color.FromArgb(200, 0, 0, 0));
-                        Graphics.DrawText(lineText, new Vector2(origin.X + height / 2, origin.Y - lines * height),
-                            lineColor);
+                        textBoxes.Add((position, textSize, lineText, lineColor));
                         if (_hasArrowImage)
-                            Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, lineColor);
+                            arrowDraws.Add((rectDirection2, rectUV2, lineColor));
                     }
                 }
 
@@ -569,6 +559,7 @@ namespace ProximityAlert
                     var widthMultiplier = 1 + height / 100;
                     var maxWidth = Math.Max(192 * widthMultiplier, maxLineWidth + height + 4);
 
+                    // draw borders/background first so they don't overlap text
                     Graphics.DrawLine(
                         new Vector2(origin.X - 15, origin.Y - margin - lines * height),
                         new Vector2(origin.X + maxWidth, origin.Y - margin - lines * height),
@@ -582,6 +573,23 @@ namespace ProximityAlert
                         1,
                         Color.White
                     );
+
+                    // then draw deferred arrows and text on top
+                    if (_hasArrowImage)
+                    {
+                        for (int i = 0; i < arrowDraws.Count; i++)
+                        {
+                            var a = arrowDraws[i];
+                            Graphics.DrawImage("Direction-Arrow.png", a.Rect, a.UV, a.Color);
+                        }
+                    }
+
+                    for (int i = 0; i < textBoxes.Count; i++)
+                    {
+                        var t = textBoxes[i];
+                        Graphics.DrawBox(t.Pos, t.Pos + t.Size, Color.FromArgb(200, 0, 0, 0));
+                        Graphics.DrawText(t.Text, t.Pos, t.Color);
+                    }
                 }
             }
             catch
