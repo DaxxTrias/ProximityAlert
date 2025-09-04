@@ -14,6 +14,7 @@ using RectangleF = ExileCore2.Shared.RectangleF;
 using Vector2 = System.Numerics.Vector2;
 using Vector3 = System.Numerics.Vector3;
 using System.Collections.Concurrent;
+using System.Text;
 
 // ReSharper disable CollectionNeverUpdated.Local
 
@@ -36,9 +37,28 @@ namespace ProximityAlert
         private readonly Dictionary<string, Vector2> _cachedTextSizes = new Dictionary<string, Vector2>();
         private readonly object _textSizeCacheLock = new object();
         private readonly Queue<string> _textSizeKeys = new Queue<string>();
-        private const int TextSizeCacheCapacity = 96;
+        private const int TextSizeCacheCapacity = 192;
         private bool _hasArrowImage;
         private bool _hasBackImage;
+        // Reuse sets/caches to reduce per-frame allocations
+        private readonly HashSet<string> _shownModNames = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, string[]> _splitCache = new Dictionary<string, string[]>();
+        private readonly Queue<string> _splitCacheKeys = new Queue<string>();
+        private const int SplitCacheCapacity = 128;
+        private readonly Dictionary<string, string> _chestNameCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        private readonly Queue<string> _chestNameKeys = new Queue<string>();
+        private const int ChestNameCacheCapacity = 256;
+        private static readonly Regex ChestNameRegex = new Regex(@"((?<=\p{Ll})\p{Lu})|((?!\A)\p{Lu}(?>\p{Ll}))", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        // Double-buffer monster snapshots to avoid allocations
+        private readonly List<Entity> _monstersBufferA = new List<Entity>(128);
+        private readonly List<Entity> _monstersBufferB = new List<Entity>(128);
+        private bool _useBufferA;
+        // Cached font/scale derived values
+        private string _lastFontRaw;
+        private float _lastScale = 1f;
+        private float _cachedFontSize = 12f;
+        private float _cachedHeight = 12f;
+        private float _cachedMargin = 3f;
 
         public override bool Initialise()
         {
@@ -213,6 +233,11 @@ namespace ProximityAlert
                     _cachedTextSizes.Clear();
                     _textSizeKeys.Clear();
                 }
+                // Clear small LRU caches on area change
+                _splitCache.Clear();
+                _splitCacheKeys.Clear();
+                _chestNameCache.Clear();
+                _chestNameKeys.Clear();
             }
             catch
             {
@@ -229,25 +254,27 @@ namespace ProximityAlert
         private void TickLogic()
         {
             var listWrapper = GameController?.EntityListWrapper;
-            List<Entity> snapshot;
+            List<Entity> buffer;
             try
             {
+                buffer = _useBufferA ? _monstersBufferA : _monstersBufferB;
+                buffer.Clear();
+
                 if (listWrapper?.ValidEntitiesByType != null &&
                     listWrapper.ValidEntitiesByType.TryGetValue(EntityType.Monster, out var col) && col != null)
                 {
-                    snapshot = col.ToList();
-                }
-                else
-                {
-                    snapshot = new List<Entity>();
+                    foreach (var e in col)
+                        buffer.Add(e);
                 }
             }
             catch
             {
-                snapshot = new List<Entity>();
+                buffer = _useBufferA ? _monstersBufferA : _monstersBufferB;
+                buffer.Clear();
             }
 
-            System.Threading.Volatile.Write(ref _cachedMonsters, snapshot);
+            System.Threading.Volatile.Write(ref _cachedMonsters, buffer);
+            _useBufferA = !_useBufferA;
 
             while (_entityAddedList.TryDequeue(out var entity) &&
                    !(GameController?.Area?.CurrentArea?.IsHideout == true || GameController?.Area?.CurrentArea?.IsTown == true))
@@ -263,10 +290,14 @@ namespace ProximityAlert
                         var mods = entity.GetComponent<ObjectMagicProperties>()?.Mods;
                         if (mods is { Count: > 0 })
                         {
-                            var matchingMods = mods.Where(x => _modDict.ContainsKey(x)).ToList();
-                            if (matchingMods.Any())
+                            var filters = new List<Warning>(mods.Count);
+                            foreach (var mod in mods)
                             {
-                                var filters = matchingMods.Select(mod => _modDict[mod]).ToList();
+                                if (_modDict.TryGetValue(mod, out var warn))
+                                    filters.Add(warn);
+                            }
+                            if (filters.Count > 0)
+                            {
                                 entity.SetHudComponent(new ProximityAlert(this, entity, filters));
                                 lock (Locker)
                                 {
@@ -283,10 +314,14 @@ namespace ProximityAlert
             }
 
             // Update valid
-            foreach (var e in System.Threading.Volatile.Read(ref _cachedMonsters))
+            var monsters = System.Threading.Volatile.Read(ref _cachedMonsters);
+            if (monsters != null)
             {
-                var drawCmd = e.GetHudComponent<ProximityAlert>();
-                drawCmd?.Update();
+                foreach (var e in monsters)
+                {
+                    var drawCmd = e.GetHudComponent<ProximityAlert>();
+                    drawCmd?.Update();
+                }
             }
         }
 
@@ -325,13 +360,29 @@ namespace ProximityAlert
                     return;
 
                 _playSounds = Settings.PlaySounds.Value;
+
                 var scale = Math.Max(0.01f, Settings.Scale.Value);
                 var fontStr = Settings.Font?.Value ?? "12";
-                var digits = new string(fontStr.Where(char.IsDigit).ToArray());
-                if (!float.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var fontSize))
-                    fontSize = 12f;
-                var height = fontSize * scale;
-                var margin = height / scale / 4f;
+                if (!string.Equals(fontStr, _lastFontRaw, StringComparison.Ordinal) || Math.Abs(scale - _lastScale) > float.Epsilon)
+                {
+                    int acc = 0;
+                    for (int i = 0; i < fontStr.Length; i++)
+                    {
+                        var c = fontStr[i];
+                        if (c >= '0' && c <= '9')
+                        {
+                            acc = (acc * 10) + (c - '0');
+                        }
+                    }
+                    _cachedFontSize = acc <= 0 ? 12f : acc;
+                    _cachedHeight = _cachedFontSize * scale;
+                    _cachedMargin = _cachedHeight / scale / 4f;
+                    _lastFontRaw = fontStr;
+                    _lastScale = scale;
+                }
+
+                var height = _cachedHeight;
+                var margin = _cachedMargin;
 
                 if (!Settings.Enable.Value) return;
                 if (_ingameState?.Camera == null || GameController?.Player == null) return;
@@ -352,8 +403,9 @@ namespace ProximityAlert
                         );
                     }
 
-                var shownModNames = new HashSet<string>(StringComparer.Ordinal);
+                _shownModNames.Clear();
                 var lines = 0;
+                float maxLineWidth = 0f;
 
                 var origin = _windowArea.Center.Translate(Settings.ProximityX.Value - 96, Settings.ProximityY.Value);
 
@@ -373,9 +425,9 @@ namespace ProximityAlert
                             origin.Y - margin / 2 - height - lines * height, height, height);
                         var rectUV = Get64DirectionsUV(phi, distance, 3);
 
-                        if (shownModNames.Add(structValue.Names))
+                        if (_shownModNames.Add(structValue.Names))
                         {
-                            var modLines = structValue.Names.Split('\n');
+                            var modLines = GetCachedSplitLines(structValue.Names);
                             var lineCount = modLines.Length;
 
                             for (var i = 0; i < lineCount; i++)
@@ -383,6 +435,7 @@ namespace ProximityAlert
                                 var currentLine = modLines[i];
                                 var position = new Vector2(origin.X + height / 2, origin.Y - (lines + i + 1) * height);
                                 var textSize = GetCachedTextSize(currentLine);
+                                if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
 
                                 Graphics.DrawBox(
                                     position,
@@ -406,22 +459,26 @@ namespace ProximityAlert
                 }
 
                 // entities
-                foreach (var entity in GameController.EntityListWrapper.Entities
-                    .Where(x => x.Type == EntityType.Chest ||
-                                x.Type == EntityType.Monster ||
-                                x.Type == EntityType.IngameIcon ||
-                                x.Type == EntityType.MiscellaneousObjects))
+                var allEntities = GameController.EntityListWrapper.Entities;
+                foreach (var entity in allEntities)
                 {
+                    var type = entity.Type;
+                    if (!(type == EntityType.Chest || type == EntityType.Monster || type == EntityType.IngameIcon || type == EntityType.MiscellaneousObjects))
+                        continue;
+
                     var match = false;
                     var lineColor = Color.White;
                     var lineText = "";
+
                     if (entity.HasComponent<Chest>() && entity.IsOpened) continue;
                     if (entity.HasComponent<Monster>() && (!entity.IsAlive || !entity.IsValid)) continue;
-                    if (entity.GetHudComponent<SoundStatus>() != null && !entity.IsValid)
-                        entity.GetHudComponent<SoundStatus>().Invalid();
-                    var miniIcon = entity.GetComponent<MinimapIcon>();
-                    if (entity.Type == EntityType.IngameIcon &&
-                        (!entity.IsValid || (miniIcon?.IsHide ?? true))) continue;
+
+                    if (type == EntityType.IngameIcon)
+                    {
+                        var miniIcon = entity.GetComponent<MinimapIcon>();
+                        if (!entity.IsValid || (miniIcon?.IsHide ?? true)) continue;
+                    }
+
                     var delta = entity.GridPos - GameController.Player.GridPos;
                     var distance = delta.GetPolarCoordinates(out var phi);
 
@@ -430,49 +487,50 @@ namespace ProximityAlert
                     var rectUV = Get64DirectionsUV(phi, distance, 3);
                     var ePath = entity.Path ?? string.Empty;
                     if (ePath.Contains("@")) ePath = ePath.Split('@')[0];
-                    var structValue = entity.GetHudComponent<ProximityAlert>();
-                    if (structValue != null && shownModNames.Add(structValue.Names))
+                    var structValue2 = entity.GetHudComponent<ProximityAlert>();
+                    if (structValue2 != null && _shownModNames.Add(structValue2.Names))
                     {
                         lines++;
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
-                        var textSize = GetCachedTextSize(structValue.Names);
+                        var textSize = GetCachedTextSize(structValue2.Names);
+                        if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
                         Graphics.DrawBox(position, position + textSize, Color.FromArgb(200, 0, 0, 0));
-                        Graphics.DrawText(structValue.Names,
-                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue.Color);
+                        Graphics.DrawText(structValue2.Names,
+                            new Vector2(origin.X + height / 2, origin.Y - lines * height), structValue2.Color);
                         if (_hasArrowImage)
-                            Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue.Color);
+                            Graphics.DrawImage("Direction-Arrow.png", rectDirection, rectUV, structValue2.Color);
                         match = true;
                     }
 
                     // Contains Check
                     if (!match)
-                        foreach (var filterEntry in _pathDict.Where(x => ePath.Contains(x.Key)).Take(1))
+                    {
+                        foreach (var kvp in _pathDict)
                         {
-                            var filter = filterEntry.Value;
-                            if (filter.Distance == -1 || filter.Distance == -2 && entity.IsValid ||
-                                distance < filter.Distance)
+                            if (ePath.IndexOf(kvp.Key, StringComparison.OrdinalIgnoreCase) >= 0)
                             {
-                                var soundStatus = entity.GetHudComponent<SoundStatus>() ?? null;
-                                if (soundStatus == null || !soundStatus.PlayedCheck())
-                                    entity.SetHudComponent(new SoundStatus(entity, filter.SoundFile));
-                                lineText = filter.Text;
-                                lineColor = filter.Color;
-                                match = true;
-                                lines++;
+                                var filter = kvp.Value;
+                                if (filter.Distance == -1 || filter.Distance == -2 && entity.IsValid ||
+                                    distance < filter.Distance)
+                                {
+                                    var soundStatus = entity.GetHudComponent<SoundStatus>();
+                                    if (soundStatus == null || !soundStatus.PlayedCheck())
+                                        entity.SetHudComponent(new SoundStatus(entity, filter.SoundFile));
+                                    lineText = filter.Text;
+                                    lineColor = filter.Color;
+                                    match = true;
+                                    lines++;
+                                }
                                 break;
                             }
                         }
+                    }
 
                     // Hardcoded Chests
                     if (!match)
                         if (entity.HasComponent<Chest>() && ePath.Contains("Delve"))
                         {
-                            var chestName = Regex.Replace(Path.GetFileName(ePath),
-                                    @"((?<=\p{Ll})\p{Lu})|((?!\A)\p{Lu}(?>\p{Ll}))", " $0")
-                                .Replace("Delve Chest ", string.Empty)
-                                .Replace("Delve Azurite ", "Azurite ")
-                                .Replace("Delve Mining Supplies ", string.Empty)
-                                .Replace("_", string.Empty);
+                            var chestName = GetCachedChestName(ePath);
                             if (chestName.EndsWith(" Encounter") || chestName.EndsWith(" No Drops")) continue;
                             if (distance > 100)
                                 if (chestName.Contains("Generic")
@@ -497,6 +555,7 @@ namespace ProximityAlert
                     {
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
                         var textSize = GetCachedTextSize(lineText);
+                        if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
                         Graphics.DrawBox(position, position + textSize, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(lineText, new Vector2(origin.X + height / 2, origin.Y - lines * height),
                             lineColor);
@@ -508,14 +567,7 @@ namespace ProximityAlert
                 if (lines > 0)
                 {
                     var widthMultiplier = 1 + height / 100;
-                    var maxWidth = 192 * widthMultiplier;
-
-                    var allLines = shownModNames.Count == 0 ? Array.Empty<string>() : shownModNames.SelectMany(n => n.Split('\n')).ToArray();
-                    foreach (var line in allLines)
-                    {
-                        var lineWidth = GetCachedTextSize(line).X;
-                        maxWidth = Math.Max(maxWidth, lineWidth + height + 4);
-                    }
+                    var maxWidth = Math.Max(192 * widthMultiplier, maxLineWidth + height + 4);
 
                     Graphics.DrawLine(
                         new Vector2(origin.X - 15, origin.Y - margin - lines * height),
@@ -556,6 +608,39 @@ namespace ProximityAlert
                 }
                 return size;
             }
+        }
+
+        private string[] GetCachedSplitLines(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return Array.Empty<string>();
+            if (_splitCache.TryGetValue(text, out var lines)) return lines;
+            var arr = text.Split('\n');
+            _splitCache[text] = arr;
+            _splitCacheKeys.Enqueue(text);
+            if (_splitCacheKeys.Count > SplitCacheCapacity)
+            {
+                var oldKey = _splitCacheKeys.Dequeue();
+                _splitCache.Remove(oldKey);
+            }
+            return arr;
+        }
+
+        private string GetCachedChestName(string ePath)
+        {
+            if (_chestNameCache.TryGetValue(ePath, out var value)) return value;
+            var chestName = ChestNameRegex.Replace(Path.GetFileName(ePath), " $0")
+                .Replace("Delve Chest ", string.Empty)
+                .Replace("Delve Azurite ", "Azurite ")
+                .Replace("Delve Mining Supplies ", string.Empty)
+                .Replace("_", string.Empty);
+            _chestNameCache[ePath] = chestName;
+            _chestNameKeys.Enqueue(ePath);
+            if (_chestNameKeys.Count > ChestNameCacheCapacity)
+            {
+                var oldKey = _chestNameKeys.Dequeue();
+                _chestNameCache.Remove(oldKey);
+            }
+            return chestName;
         }
 
         private class Warning
@@ -622,11 +707,25 @@ namespace ProximityAlert
                 var mods = Entity.GetComponent<ObjectMagicProperties>()?.Mods;
                 if (mods == null || mods.Count <= 0) return;
 
-                var matchingMods = mods.Where(x => Owner._modDict.ContainsKey(x)).ToList();
-                if (!matchingMods.Any()) return;
+                List<Warning> newWarnings = null;
+                foreach (var mod in mods)
+                {
+                    if (Owner._modDict.TryGetValue(mod, out var warn))
+                    {
+                        newWarnings ??= new List<Warning>(mods.Count);
+                        newWarnings.Add(warn);
+                    }
+                }
+                if (newWarnings == null || newWarnings.Count == 0) return;
 
-                Warnings = matchingMods.Select(mod => Owner._modDict[mod]).ToList();
-                Names = string.Join("\n", Warnings.Select(w => w.Text));
+                Warnings = newWarnings;
+                var sb = new StringBuilder();
+                for (int i = 0; i < newWarnings.Count; i++)
+                {
+                    if (i > 0) sb.Append('\n');
+                    sb.Append(newWarnings[i].Text);
+                }
+                Names = sb.ToString();
 
                 if (PlayWarning)
                 {
@@ -663,6 +762,10 @@ namespace ProximityAlert
                     _cachedTextSizes.Clear();
                     _textSizeKeys.Clear();
                 }
+                _splitCache.Clear();
+                _splitCacheKeys.Clear();
+                _chestNameCache.Clear();
+                _chestNameKeys.Clear();
                 System.Threading.Volatile.Write(ref _cachedMonsters, new List<Entity>());
                 _pathDict.Clear();
                 _modDict.Clear();
