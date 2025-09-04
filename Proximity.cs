@@ -22,20 +22,21 @@ namespace ProximityAlert
     public partial class Proximity : BaseSettingsPlugin<ProximitySettings>
     {
         private static SoundController _soundController;
-        private static Dictionary<string, Warning> _pathDict = new Dictionary<string, Warning>();
-        private static Dictionary<string, Warning> _modDict = new Dictionary<string, Warning>();
+        private Dictionary<string, Warning> _pathDict = new Dictionary<string, Warning>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, Warning> _modDict = new Dictionary<string, Warning>(StringComparer.OrdinalIgnoreCase);
         private static string _soundDir;
         private static bool _playSounds = true;
         private static DateTime _lastPlayed;
         private static readonly object Locker = new object();
-        private static readonly HashSet<StaticEntity> NearbyPaths = new HashSet<StaticEntity>();
+        private readonly HashSet<StaticEntity> NearbyPaths = new HashSet<StaticEntity>();
         private readonly ConcurrentQueue<Entity> _entityAddedList = new ConcurrentQueue<Entity>();
         private IngameState _ingameState;
         private RectangleF _windowArea;
         private volatile List<Entity> _cachedMonsters;
-        private Vector2 _cachedVector2 = new Vector2();
-        private RectangleF _cachedRectangleF = new RectangleF();
-        private Dictionary<string, Vector2> _cachedTextSizes = new Dictionary<string, Vector2>();
+        private readonly Dictionary<string, Vector2> _cachedTextSizes = new Dictionary<string, Vector2>();
+        private readonly object _textSizeCacheLock = new object();
+        private readonly Queue<string> _textSizeKeys = new Queue<string>();
+        private const int TextSizeCacheCapacity = 256;
         private bool _hasArrowImage;
         private bool _hasBackImage;
 
@@ -207,7 +208,11 @@ namespace ProximityAlert
             {
                 while (_entityAddedList.TryDequeue(out _)) { }
                 NearbyPaths.Clear();
-                _cachedTextSizes.Clear();
+                lock (_textSizeCacheLock)
+                {
+                    _cachedTextSizes.Clear();
+                    _textSizeKeys.Clear();
+                }
             }
             catch
             {
@@ -262,7 +267,7 @@ namespace ProximityAlert
                             if (matchingMods.Any())
                             {
                                 var filters = matchingMods.Select(mod => _modDict[mod]).ToList();
-                                entity.SetHudComponent(new ProximityAlert(entity, filters));
+                                entity.SetHudComponent(new ProximityAlert(this, entity, filters));
                                 lock (Locker)
                                 {
                                     PlaySound(filters[0].SoundFile);
@@ -536,12 +541,21 @@ namespace ProximityAlert
         private Vector2 GetCachedTextSize(string text, int fontSize = 0)
         {
             var key = $"{text}_{fontSize}";
-            if (!_cachedTextSizes.TryGetValue(key, out var size))
+            lock (_textSizeCacheLock)
             {
-                size = Graphics.MeasureText(text, fontSize);
-                _cachedTextSizes[key] = size;
+                if (!_cachedTextSizes.TryGetValue(key, out var size))
+                {
+                    size = Graphics.MeasureText(text, fontSize);
+                    _cachedTextSizes[key] = size;
+                    _textSizeKeys.Enqueue(key);
+                    if (_textSizeKeys.Count > TextSizeCacheCapacity)
+                    {
+                        var oldKey = _textSizeKeys.Dequeue();
+                        _cachedTextSizes.Remove(oldKey);
+                    }
+                }
+                return size;
             }
-            return size;
         }
 
         private class Warning
@@ -584,8 +598,9 @@ namespace ProximityAlert
 
         private class ProximityAlert
         {
-            public ProximityAlert(Entity entity, List<Warning> warnings)
+            public ProximityAlert(Proximity owner, Entity entity, List<Warning> warnings)
             {
+                Owner = owner;
                 Entity = entity;
                 Warnings = warnings;
                 Names = string.Empty;
@@ -593,6 +608,7 @@ namespace ProximityAlert
                 PlayWarning = true;
             }
 
+            private Proximity Owner { get; }
             private Entity Entity { get; }
             private List<Warning> Warnings { get; set; }
             public string Names { get; private set; }
@@ -606,10 +622,10 @@ namespace ProximityAlert
                 var mods = Entity.GetComponent<ObjectMagicProperties>()?.Mods;
                 if (mods == null || mods.Count <= 0) return;
 
-                var matchingMods = mods.Where(x => _modDict.ContainsKey(x)).ToList();
+                var matchingMods = mods.Where(x => Owner._modDict.ContainsKey(x)).ToList();
                 if (!matchingMods.Any()) return;
 
-                Warnings = matchingMods.Select(mod => _modDict[mod]).ToList();
+                Warnings = matchingMods.Select(mod => Owner._modDict[mod]).ToList();
                 Names = string.Join("\n", Warnings.Select(w => w.Text));
 
                 if (PlayWarning)
@@ -642,7 +658,11 @@ namespace ProximityAlert
             {
                 while (_entityAddedList.TryDequeue(out _)) { }
                 NearbyPaths.Clear();
-                _cachedTextSizes.Clear();
+                lock (_textSizeCacheLock)
+                {
+                    _cachedTextSizes.Clear();
+                    _textSizeKeys.Clear();
+                }
                 System.Threading.Volatile.Write(ref _cachedMonsters, new List<Entity>());
                 _pathDict.Clear();
                 _modDict.Clear();
