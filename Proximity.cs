@@ -59,6 +59,9 @@ namespace ProximityAlert
         private float _cachedFontSize = 12f;
         private float _cachedHeight = 12f;
         private float _cachedMargin = 3f;
+        // Reused per-frame draw command buffers to avoid allocations in Render
+        private readonly List<(Vector2 Pos, Vector2 Size, string Text, Color Color)> _textBoxes = new List<(Vector2, Vector2, string, Color)>(64);
+        private readonly List<(RectangleF Rect, RectangleF UV, Color Color)> _arrowDraws = new List<(RectangleF, RectangleF, Color)>(32);
 
         public override bool Initialise()
         {
@@ -387,6 +390,9 @@ namespace ProximityAlert
                 if (!Settings.Enable.Value) return;
                 if (_ingameState?.Camera == null || GameController?.Player == null) return;
 
+                // cache player grid once for the frame
+                var playerGrid = GameController.Player.GridPos;
+
                 if (Settings.ShowPathAlerts.Value)
                     foreach (var sEnt in NearbyPaths)
                     {
@@ -409,9 +415,9 @@ namespace ProximityAlert
 
                 var origin = _windowArea.Center.Translate(Settings.ProximityX.Value - 96, Settings.ProximityY.Value);
 
-                // Defer drawing of text/arrows so borders are drawn first
-                var textBoxes = new List<(Vector2 Pos, Vector2 Size, string Text, Color Color)>(64);
-                var arrowDraws = new List<(RectangleF Rect, RectangleF UV, Color Color)>(32);
+                // reuse draw command buffers
+                _textBoxes.Clear();
+                _arrowDraws.Clear();
 
                 // mod Alerts
                 var monsters = System.Threading.Volatile.Read(ref _cachedMonsters);
@@ -422,7 +428,7 @@ namespace ProximityAlert
                         if (entity.Rarity == MonsterRarity.White) continue;
                         var structValue = entity.GetHudComponent<ProximityAlert>();
                         if (structValue == null || !entity.IsAlive || structValue.Names == string.Empty) continue;
-                        var delta = entity.GridPos - GameController.Player.GridPos;
+                        var delta = entity.GridPos - playerGrid;
                         var distance = delta.GetPolarCoordinates(out var phi);
 
                         var rectDirection = new RectangleF(origin.X - margin - height / 2,
@@ -441,46 +447,48 @@ namespace ProximityAlert
                                 var textSize = GetCachedTextSize(currentLine);
                                 if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
 
-                                textBoxes.Add((position, new Vector2(textSize.X, height), currentLine, structValue.Color));
+                                _textBoxes.Add((position, new Vector2(textSize.X, height), currentLine, structValue.Color));
                             }
 
                             if (_hasArrowImage)
-                                arrowDraws.Add((rectDirection, rectUV, structValue.Color));
+                                _arrowDraws.Add((rectDirection, rectUV, structValue.Color));
 
                             lines += lineCount;
                         }
                     }
                 }
 
-                // entities
-                var allEntities = GameController.EntityListWrapper.Entities;
-                foreach (var entity in allEntities)
+                // entities (enumerate per-type collections when available)
+                var listWrapper = GameController?.EntityListWrapper;
+
+                void ProcessEntity(Entity entity)
                 {
                     var type = entity.Type;
                     if (!(type == EntityType.Chest || type == EntityType.Monster || type == EntityType.IngameIcon || type == EntityType.MiscellaneousObjects))
-                        continue;
+                        return;
 
                     var match = false;
                     var lineColor = Color.White;
                     var lineText = "";
 
-                    if (entity.HasComponent<Chest>() && entity.IsOpened) continue;
-                    if (entity.HasComponent<Monster>() && (!entity.IsAlive || !entity.IsValid)) continue;
+                    if (entity.HasComponent<Chest>() && entity.IsOpened) return;
+                    if (entity.HasComponent<Monster>() && (!entity.IsAlive || !entity.IsValid)) return;
 
                     if (type == EntityType.IngameIcon)
                     {
                         var miniIcon = entity.GetComponent<MinimapIcon>();
-                        if (!entity.IsValid || (miniIcon?.IsHide ?? true)) continue;
+                        if (!entity.IsValid || (miniIcon?.IsHide ?? true)) return;
                     }
 
-                    var delta = entity.GridPos - GameController.Player.GridPos;
+                    var delta = entity.GridPos - playerGrid;
                     var distance = delta.GetPolarCoordinates(out var phi2);
 
                     var rectDirection2 = new RectangleF(origin.X - margin - height / 2,
                         origin.Y - margin / 2 - height - lines * height, height, height);
                     var rectUV2 = Get64DirectionsUV(phi2, distance, 3);
                     var ePath = entity.Path ?? string.Empty;
-                    if (ePath.Contains("@")) ePath = ePath.Split('@')[0];
+                    var atIdx = ePath.IndexOf('@');
+                    if (atIdx > 0) ePath = ePath.Substring(0, atIdx);
                     var structValue2 = entity.GetHudComponent<ProximityAlert>();
                     if (structValue2 != null && _shownModNames.Add(structValue2.Names))
                     {
@@ -488,9 +496,9 @@ namespace ProximityAlert
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
                         var textSize = GetCachedTextSize(structValue2.Names);
                         if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
-                        textBoxes.Add((position, textSize, structValue2.Names, structValue2.Color));
+                        _textBoxes.Add((position, textSize, structValue2.Names, structValue2.Color));
                         if (_hasArrowImage)
-                            arrowDraws.Add((rectDirection2, rectUV2, structValue2.Color));
+                            _arrowDraws.Add((rectDirection2, rectUV2, structValue2.Color));
                         match = true;
                     }
 
@@ -523,7 +531,7 @@ namespace ProximityAlert
                         if (entity.HasComponent<Chest>() && ePath.Contains("Delve"))
                         {
                             var chestName = GetCachedChestName(ePath);
-                            if (chestName.EndsWith(" Encounter") || chestName.EndsWith(" No Drops")) continue;
+                            if (chestName.EndsWith(" Encounter") || chestName.EndsWith(" No Drops")) return;
                             if (distance > 100)
                                 if (chestName.Contains("Generic")
                                     || chestName.Contains("Vein")
@@ -532,7 +540,7 @@ namespace ProximityAlert
                                     || chestName.Contains("Armour")
                                     || chestName.Contains("Weapon"))
                                     if (chestName.Contains("Path ") || !chestName.Contains("Currency"))
-                                        continue;
+                                        return;
                             if (chestName.Contains("Currency") || chestName.Contains("Fossil"))
                                 lineColor = Color.FromArgb(255, 255, 0, 255);
                             if (chestName.Contains("Flares")) lineColor = Color.FromArgb(255, 0, 200, 255);
@@ -548,9 +556,44 @@ namespace ProximityAlert
                         var position = new Vector2(origin.X + height / 2, origin.Y - lines * height);
                         var textSize = GetCachedTextSize(lineText);
                         if (textSize.X > maxLineWidth) maxLineWidth = textSize.X;
-                        textBoxes.Add((position, textSize, lineText, lineColor));
+                        _textBoxes.Add((position, textSize, lineText, lineColor));
                         if (_hasArrowImage)
-                            arrowDraws.Add((rectDirection2, rectUV2, lineColor));
+                            _arrowDraws.Add((rectDirection2, rectUV2, lineColor));
+                    }
+                }
+
+                if (listWrapper?.ValidEntitiesByType != null)
+                {
+                    // Process monsters from cached snapshot to avoid re-scanning global list
+                    if (monsters != null)
+                    {
+                        foreach (var m in monsters)
+                            ProcessEntity(m);
+                    }
+
+                    if (listWrapper.ValidEntitiesByType.TryGetValue(EntityType.Chest, out var chests) && chests != null)
+                    {
+                        foreach (var c in chests)
+                            ProcessEntity(c);
+                    }
+                    if (listWrapper.ValidEntitiesByType.TryGetValue(EntityType.IngameIcon, out var icons) && icons != null)
+                    {
+                        foreach (var i in icons)
+                            ProcessEntity(i);
+                    }
+                    if (listWrapper.ValidEntitiesByType.TryGetValue(EntityType.MiscellaneousObjects, out var misc) && misc != null)
+                    {
+                        foreach (var mo in misc)
+                            ProcessEntity(mo);
+                    }
+                }
+                else
+                {
+                    var allEntities = listWrapper?.Entities;
+                    if (allEntities != null)
+                    {
+                        foreach (var entity in allEntities)
+                            ProcessEntity(entity);
                     }
                 }
 
@@ -577,16 +620,16 @@ namespace ProximityAlert
                     // then draw deferred arrows and text on top
                     if (_hasArrowImage)
                     {
-                        for (int i = 0; i < arrowDraws.Count; i++)
+                        for (int i = 0; i < _arrowDraws.Count; i++)
                         {
-                            var a = arrowDraws[i];
+                            var a = _arrowDraws[i];
                             Graphics.DrawImage("Direction-Arrow.png", a.Rect, a.UV, a.Color);
                         }
                     }
 
-                    for (int i = 0; i < textBoxes.Count; i++)
+                    for (int i = 0; i < _textBoxes.Count; i++)
                     {
-                        var t = textBoxes[i];
+                        var t = _textBoxes[i];
                         Graphics.DrawBox(t.Pos, t.Pos + t.Size, Color.FromArgb(200, 0, 0, 0));
                         Graphics.DrawText(t.Text, t.Pos, t.Color);
                     }
