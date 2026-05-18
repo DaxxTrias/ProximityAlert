@@ -22,24 +22,23 @@ namespace ProximityAlert
 {
     public partial class Proximity : BaseSettingsPlugin<ProximitySettings>
     {
-        private static SoundController _soundController;
+        private static SoundController? _soundController;
         private Dictionary<string, Warning> _pathDict = new Dictionary<string, Warning>(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, Warning> _modDict = new Dictionary<string, Warning>(StringComparer.OrdinalIgnoreCase);
-        private static string _soundDir;
+        private static string? _soundDir;
         private static bool _playSounds = true;
         private static DateTime _lastPlayed;
         private static readonly object Locker = new object();
         private readonly HashSet<StaticEntity> NearbyPaths = new HashSet<StaticEntity>();
         private readonly ConcurrentQueue<Entity> _entityAddedList = new ConcurrentQueue<Entity>();
-        private IngameState _ingameState;
+        private IngameState? _ingameState;
         private RectangleF _windowArea;
-        private volatile List<Entity> _cachedMonsters;
+        private List<Entity>? _cachedMonsters;
         private readonly Dictionary<string, Vector2> _cachedTextSizes = new Dictionary<string, Vector2>();
         private readonly object _textSizeCacheLock = new object();
         private readonly Queue<string> _textSizeKeys = new Queue<string>();
         private const int TextSizeCacheCapacity = 192;
         private bool _hasArrowImage;
-        private bool _hasBackImage;
         // Reuse sets/caches to reduce per-frame allocations
         private readonly HashSet<string> _shownModNames = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<string, string[]> _splitCache = new Dictionary<string, string[]>();
@@ -54,7 +53,7 @@ namespace ProximityAlert
         private readonly List<Entity> _monstersBufferB = new List<Entity>(128);
         private bool _useBufferA;
         // Cached font/scale derived values
-        private string _lastFontRaw;
+        private string? _lastFontRaw;
         private float _lastScale = 1f;
         private float _cachedFontSize = 12f;
         private float _cachedHeight = 12f;
@@ -85,10 +84,7 @@ namespace ProximityAlert
             }
 
             if (File.Exists(backPath))
-            {
                 Graphics.InitImage(backPath.Replace('\\', '/'), false);
-                _hasBackImage = true;
-            }
 
             lock (Locker) _soundDir = Path.Combine(DirectoryFullName, "sounds").Replace('\\', '/');
             var pathAlertsPath = EnsureConfigFile("PathAlerts.txt");
@@ -696,10 +692,10 @@ namespace ProximityAlert
 
         private class Warning
         {
-            public string Text { get; set; }
+            public string Text { get; set; } = string.Empty;
             public Color Color { get; set; }
             public int Distance { get; set; }
-            public string SoundFile { get; set; }
+            public string SoundFile { get; set; } = string.Empty;
         }
 
         private class SoundStatus
@@ -758,7 +754,7 @@ namespace ProximityAlert
                 var mods = Entity.GetComponent<ObjectMagicProperties>()?.Mods;
                 if (mods == null || mods.Count <= 0) return;
 
-                List<Warning> newWarnings = null;
+                List<Warning>? newWarnings = null;
                 foreach (var mod in mods)
                 {
                     if (Owner._modDict.TryGetValue(mod, out var warn))
